@@ -1,54 +1,48 @@
 import java.util.concurrent.Semaphore;
 
 public class Table {
-    private final Semaphore[] forks = new Semaphore[5];
-    private final boolean[] forkTaken = new boolean[5];
-    private final Object lock = new Object();
+    private final Semaphore[] forks;
+    private final Semaphore waiter;  // офіціант
 
-    public Table() {
-        for (int i = 0; i < 5; i++) {
+    public Table(int forksCount) {
+        this.forks = new Semaphore[forksCount];
+        this.waiter = new Semaphore(forksCount - 1); // офіціант пускає лише 4 філософів
+
+        for (int i = 0; i < forksCount; i++)
             forks[i] = new Semaphore(1);
-        }
     }
 
-    public void getForks(int left, int right) {
-        synchronized (lock) {
-            while (!canTakeForks(left, right)) {
-                try {
-                    lock.wait();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-            }
-            forkTaken[left] = true;
-            forkTaken[right] = true;
-        }
+    private int leftForkId(int philosopherId) {
+        return philosopherId;
+    }
 
-        try {
-            forks[left].acquire();
+    private int rightForkId(int philosopherId) {
+        return (philosopherId + 1) % forks.length;
+    }
+
+    public void requestForks(Philosopher philosopher) throws InterruptedException {
+        waiter.acquire();  // просить дозволу в офіціанта
+        int left = leftForkId(philosopher.getId());
+        int right = rightForkId(philosopher.getId());
+
+        forks[left].acquire();
+        synchronized (System.out) {
+            System.out.println("Philosopher " + philosopher.getId() + " took left fork (" + left + ")");
             forks[right].acquire();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            System.out.println("Philosopher " + philosopher.getId() + " took right fork (" + right + ")");
         }
     }
 
-    public void putForks(int left, int right) {
+    public void returnForks(Philosopher philosopher) {
+        int left = leftForkId(philosopher.getId());
+        int right = rightForkId(philosopher.getId());
+
         forks[left].release();
         forks[right].release();
-
-        synchronized (lock) {
-            forkTaken[left] = false;
-            forkTaken[right] = false;
-            lock.notifyAll();
+        synchronized (System.out) {
+            System.out.println("Philosopher " + philosopher.getId() + " put down both forks");
         }
-    }
 
-    private boolean canTakeForks(int left, int right) {
-        int takenCount = 0;
-        for (boolean taken : forkTaken) {
-            if (taken) takenCount++;
-        }
-        return takenCount < 4 && !forkTaken[left] && !forkTaken[right];
+        waiter.release();
     }
 }
